@@ -195,40 +195,40 @@ impl Parser {
         }
         Some(plist)
     }
-    fn parse_clause(&mut self) -> Option<Node> {
+    fn parse_clause(&mut self) -> Option<Rc<Node>> {
         if let Some(left) = self.parse_predicate() {
             if self.lexer.consume(Token::Op(":-".to_string())) {
                 if let Some(right) = self.parse_predicate_list() {
                     self.lexer.expect(Token::Op(".".to_string()));
-                    Some(Node::Clause {
+                    Some(Rc::new(Node::Clause {
                         left: Rc::new(left),
                         right,
-                    })
+                    }))
                 } else {
                     panic!("Expected predicate but got {:?}", self.lexer.peek_token())
                 }
             } else {
                 self.lexer.expect(Token::Op(".".to_string()));
-                Some(left)
+                Some(Rc::new(left))
             }
         } else {
             None
         }
     }
-    fn parse(&mut self) -> Vec<Rc<Node>> {
+    fn parse(&mut self) -> Rc<Vec<Rc<Node>>> {
         let mut nodes = Vec::new();
         loop {
             let node = self.parse_clause();
             match node {
                 None => break,
-                Some(node) => nodes.push(Rc::new(node)),
+                Some(node) => nodes.push(node),
             }
         }
-        nodes
+        Rc::new(nodes)
     }
 }
 
-fn built_in_clause_list() -> Vec<Rc<Node>> {
+fn built_in_clause_list() -> Rc<Vec<Rc<Node>>> {
     let lexer = Lexer::new(
         r#"
 red(xff0000).
@@ -243,16 +243,28 @@ blue(x0000ff).
 
 struct Evaluator {
     clause_list: Vec<Rc<Node>>,
-    query: Node,
+    query: Rc<Node>,
 }
 
 impl Evaluator {
-    fn new(clause_list: Vec<Rc<Node>>, query: Node) -> Self {
+    fn new(clause_list: Vec<Rc<Node>>, query: Rc<Node>) -> Self {
         Self { clause_list, query }
     }
     fn eval(&self) -> bool {
-        panic!("eval!!");
+        for clause in &self.clause_list {
+            if clause == &self.query {
+                return true;
+            }
+        }
+        false
     }
+}
+
+fn run_query(clause_list: &Vec<Rc<Node>>, query: Rc<Node>) {
+    println!("query: {:?}", query);
+    let evaluator = Evaluator::new(clause_list.clone(), query);
+    let result = evaluator.eval();
+    println!("result: {:?}", result);
 }
 
 fn main() -> std::io::Result<()> {
@@ -268,10 +280,7 @@ fn main() -> std::io::Result<()> {
         let lexer = Lexer::new(input);
         let mut parser = Parser::new(lexer);
         if let Some(query) = parser.parse_clause() {
-            println!("query: {:?}", query);
-            let evaluator = Evaluator::new(clause_list.clone(), query);
-            let result = evaluator.eval();
-            println!("result: {:?}", result);
+            run_query(&clause_list, query);
         }
     }
     Ok(())
@@ -281,7 +290,7 @@ fn main() -> std::io::Result<()> {
 mod tests {
     use super::*;
 
-    fn parse_input(input: &str) -> Vec<Rc<Node>> {
+    fn parse_input(input: &str) -> Rc<Vec<Rc<Node>>> {
         println!("input: {}", input);
         let lexer = Lexer::new(input.to_string());
         let mut parser = Parser::new(lexer);
@@ -309,25 +318,25 @@ mod tests {
     }
     #[test]
     fn parse() {
-        assert!(parse_input("eq(a).") == vec![predicate("eq", vec![atom("a")])]);
-        assert!(parse_input("eq(A).") == vec![predicate("eq", vec![variable("A")])]);
-        assert!(parse_input("cat.") == vec![predicate("cat", Vec::new())]);
+        assert!(*parse_input("eq(a).") == vec![predicate("eq", vec![atom("a")])]);
+        assert!(*parse_input("eq(A).") == vec![predicate("eq", vec![variable("A")])]);
+        assert!(*parse_input("cat.") == vec![predicate("cat", Vec::new())]);
         assert!(
-            parse_input("cat :- true.")
+            *parse_input("cat :- true.")
                 == vec![clause(
                     predicate("cat", Vec::new()),
                     vec![predicate("true", Vec::new())],
                 )]
         );
         assert!(
-            parse_input("a :- b(X).")
+            *parse_input("a :- b(X).")
                 == vec![clause(
                     predicate("a", Vec::new()),
                     vec![predicate("b", vec![variable("X")])],
                 )]
         );
         assert!(
-            parse_input("add(X, e, X).")
+            *parse_input("add(X, e, X).")
                 == vec![predicate(
                     "add",
                     vec![variable("X"), atom("e"), variable("X"),]
