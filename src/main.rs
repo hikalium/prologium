@@ -38,7 +38,7 @@ impl Lexer {
                 Some(c) => match c {
                     'a'..='z' => {
                         let mut s = String::new();
-                        while let Some(c @ 'a'..='z') = self.peek() {
+                        while let Some(c @ ('a'..='z' | '0'..='9')) = self.peek() {
                             self.pop();
                             s.push(c);
                         }
@@ -199,6 +199,7 @@ impl Parser {
         if let Some(left) = self.parse_predicate() {
             if self.lexer.consume(Token::Op(":-".to_string())) {
                 if let Some(right) = self.parse_predicate_list() {
+                    self.lexer.expect(Token::Op(".".to_string()));
                     Some(Node::Clause {
                         left: Rc::new(left),
                         right,
@@ -207,25 +208,17 @@ impl Parser {
                     panic!("Expected predicate but got {:?}", self.lexer.peek_token())
                 }
             } else {
+                self.lexer.expect(Token::Op(".".to_string()));
                 Some(left)
             }
         } else {
             None
         }
     }
-    fn parse_rule(&mut self) -> Option<Node> {
-        match self.parse_clause() {
-            Some(node) => {
-                self.lexer.expect(Token::Op(".".to_string()));
-                Some(node)
-            }
-            None => None,
-        }
-    }
     fn parse(&mut self) -> Vec<Node> {
         let mut nodes = Vec::new();
         loop {
-            let node = self.parse_rule();
+            let node = self.parse_clause();
             match node {
                 None => break,
                 Some(node) => nodes.push(node),
@@ -235,7 +228,22 @@ impl Parser {
     }
 }
 
+fn built_in_clause_list() -> Vec<Node> {
+    let lexer = Lexer::new(
+        r#"
+red(xff0000).
+green(x00ff00).
+blue(x0000ff).
+            "#
+        .to_string(),
+    );
+    let mut parser = Parser::new(lexer);
+    parser.parse()
+}
+
 fn main() -> std::io::Result<()> {
+    let clause_list = built_in_clause_list();
+    println!("{:?}", clause_list);
     loop {
         let mut input = String::new();
         if std::io::stdin().read_line(&mut input)? == 0 {
